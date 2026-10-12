@@ -103,7 +103,20 @@ def affine_from_pending(pending_item):
 def _lazy_interp_mode(mode):
     """
     Convert an interpolation mode recorded by a spatial transform into one usable by the lazy resampler
-    (:py:class:`monai.transforms.SpatialResample`), or ``None`` if it has no equivalent.
+    (:py:class:`monai.transforms.SpatialResample`).
+
+    ``"nearest-exact"`` is mapped to grid-sample ``"nearest"``, which samples at the same (half-pixel aligned)
+    source locations; results can differ only for source locations exactly halfway between two voxels, where
+    grid-sample rounds half to even and ``torch.nn.functional.interpolate`` rounds half up.
+
+    Args:
+        mode: the interpolation mode recorded in a pending operation's ``extra_info``, e.g. a
+            :py:class:`monai.utils.GridSampleMode` or :py:class:`monai.utils.InterpolateMode` value, its string
+            form, or a spline interpolation order (``0``-``5``).
+
+    Returns:
+        A grid-sample mode string or a spline order supported by the lazy resampler, or ``None`` if ``mode`` is
+        unset or has no equivalent (e.g. ``"area"``), in which case the resampler's default mode is used.
     """
     if isinstance(mode, Enum):
         mode = mode.value
@@ -122,7 +135,16 @@ def _lazy_interp_mode(mode):
 
 def _lazy_padding_mode(padding_mode):
     """
-    Convert a padding mode recorded by a spatial transform into one usable by the lazy resampler, or ``None``.
+    Convert a padding mode recorded by a spatial transform into one usable by the lazy resampler
+    (:py:class:`monai.transforms.SpatialResample`).
+
+    Args:
+        padding_mode: the padding mode recorded in a pending operation's ``extra_info``, e.g. a
+            :py:class:`monai.utils.GridSamplePadMode` or :py:class:`monai.utils.NdimageMode` value or its string form.
+
+    Returns:
+        ``padding_mode`` as a string if it is a supported grid-sample or ndimage padding mode, otherwise ``None``,
+        in which case the resampler's default padding mode is used.
     """
     if isinstance(padding_mode, Enum):
         padding_mode = padding_mode.value

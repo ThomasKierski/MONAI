@@ -21,6 +21,7 @@ from monai.transforms import (
     CenterSpatialCropd,
     Compose,
     RandAffined,
+    Resize,
     Resized,
     ResizeWithPadOrCropd,
     Rotated,
@@ -30,6 +31,7 @@ from monai.transforms import (
 )
 from monai.transforms.lazy.utils import kwargs_from_pending
 from monai.utils import LazyAttr, TraceKeys
+from tests.test_utils import assert_allclose
 
 TEST_CASES = [
     ["spacing", [Spacingd("label", pixdim=1.3, mode="nearest")]],
@@ -58,14 +60,22 @@ class TestLazyInterpMode(unittest.TestCase):
     def test_bilinear_key_still_interpolates(self):
         torch.manual_seed(0)
         data = {
-            "img": MetaTensor(torch.rand(1, 32, 32, 32), affine=torch.eye(4)),
+            "img": MetaTensor((torch.rand(1, 32, 32, 32) > 0.5).float(), affine=torch.eye(4)),
             "label": MetaTensor((torch.rand(1, 32, 32, 32) > 0.5).float(), affine=torch.eye(4)),
         }
         keys = ["img", "label"]
         pipeline = Compose([Spacingd(keys, pixdim=1.3, mode=("bilinear", "nearest")), SpatialPadd(keys, 40)], lazy=True)
         out = pipeline(data)
         self.assertTrue(set(torch.unique(out["label"]).tolist()) <= {0.0, 1.0})
-        self.assertGreater(len(torch.unique(out["img"])), 2)
+        # a binary input only yields values strictly between 0 and 1 if it was actually interpolated
+        self.assertTrue(((out["img"] > 0) & (out["img"] < 1)).any())
+
+    def test_nearest_exact_resize_matches_eager(self):
+        torch.manual_seed(0)
+        img = MetaTensor(torch.randint(0, 5, (1, 17, 23, 29)).float(), affine=torch.eye(4))
+        eager = Resize((20, 20, 20), mode="nearest-exact")(img.clone())
+        lazy = Compose([Resize((20, 20, 20), mode="nearest-exact")], lazy=True)(img.clone())
+        assert_allclose(lazy, eager, type_test=False)
 
     def test_kwargs_from_pending_extra_info(self):
         kw = kwargs_from_pending({TraceKeys.EXTRA_INFO: {"mode": "nearest", "padding_mode": "border"}})
